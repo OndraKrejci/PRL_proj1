@@ -3,8 +3,6 @@
 #include <fstream> // ifstream
 #include <iostream> // cout, cerr
 
-#include <unistd.h> // usleep
-
 #include <mpi.h>
 
 constexpr std::size_t INPUT_SIZE = 8;
@@ -12,9 +10,15 @@ constexpr int REQUIRED_PROCS = 19;
 
 constexpr int MPI_OEMS_TAG = 1;
 
-void err_exit(const MPI_Comm& comm, const int code){
-	std::cerr << std::endl;
-	usleep(100);
+constexpr bool OUTPUT_FORMAT = true;
+
+enum ERROR_CODE{
+	ERR_INPUT_FILE = 1,
+	ERR_ARGUMENTS,
+	ERR_COMMUNICATION
+};
+
+void err_exit(const MPI_Comm& comm, const ERROR_CODE code){
 	MPI_Abort(comm, code);
 }
 
@@ -28,7 +32,7 @@ void printError(const int ec){
 std::string parse_args(int argc, char** argv){
 	if(argc < 2){
 		std::cerr << "Missing input file argument\n";
-		err_exit(MPI_COMM_WORLD, 2);
+		err_exit(MPI_COMM_WORLD, ERR_ARGUMENTS);
 	}
 
 	return std::string(argv[1]);
@@ -39,13 +43,13 @@ std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 
 	if(!inp.good()){
 		std::cerr << "Failed to open file: " << fname << '\n';
-		err_exit(MPI_COMM_WORLD, 1);
+		err_exit(MPI_COMM_WORLD, ERR_INPUT_FILE);
 	}
 
 	std::string line;
 	if(!std::getline(inp, line)){
 		std::cerr << "Input file " << fname << " is empty\n";
-		err_exit(MPI_COMM_WORLD, 1);
+		err_exit(MPI_COMM_WORLD, ERR_INPUT_FILE);
 	}
 
 	inp.close();
@@ -53,7 +57,7 @@ std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 	const std::size_t inputSize = line.length();
 	if(inputSize != INPUT_SIZE){
 		std::cerr << "Input file contains invalid amount of numbers " << inputSize << " (expected: " << INPUT_SIZE << ")\n";
-		err_exit(MPI_COMM_WORLD, 1);
+		err_exit(MPI_COMM_WORLD, ERR_INPUT_FILE);
 	}
 
 	std::array<unsigned char, INPUT_SIZE> numbers;
@@ -64,8 +68,8 @@ std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 	return numbers;
 }
 
-void printNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, const bool format_out = false){
-	const char sep = format_out ? '\n' : ' ';
+void printNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, const bool formatOut = false){
+	const char sep = formatOut ? '\n' : ' ';
 
 	std::cout << static_cast<short>(numbers[0]);
 	for(unsigned i = 1; i < INPUT_SIZE; i++){
@@ -91,7 +95,7 @@ void sendNumbers(const unsigned char* const buf, const int dest, const MPI_Comm&
 	if(ec){
 		std::cerr << "MPI_Send: failed to send numbers [" << getCommRank(comm) << " to " << dest << "]\n";
 		printError(ec);
-		err_exit(comm, 3);
+		err_exit(comm, ERR_COMMUNICATION);
 	}
 }
 
@@ -101,7 +105,7 @@ void recvNumbers(unsigned char* const buf, const int src, const MPI_Comm& comm, 
 	if(ec){
 		std::cerr << "MPI_Recv: failed to receive numbers [" << getCommRank(comm) << " from " << src << "]\n";
 		printError(ec);
-		err_exit(comm, 3);
+		err_exit(comm, ERR_COMMUNICATION);
 	}
 }
 
@@ -117,7 +121,7 @@ void rootSendNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, unsig
 		if(ec){
 			std::cerr << "MPI_Isend: failed to send numbers [" << getCommRank(comm) << " to " << dst << "]\n";
 			printError(ec);
-			err_exit(comm, 3);
+			err_exit(comm, ERR_COMMUNICATION);
 		}
 	}
 
@@ -125,7 +129,7 @@ void rootSendNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, unsig
 	if(ec){
 		std::cerr << "MPI_Waitall: failed to send all numbers in root\n";
 		printError(ec);
-		err_exit(comm, 3);
+		err_exit(comm, ERR_COMMUNICATION);
 	}
 
 	buf[0] = numbers[0];
@@ -139,7 +143,7 @@ void rootRecvNumbers(const std::array<int, INPUT_SIZE>& srcs, std::array<unsigne
 		if(ec){
 			std::cerr << "MPI_Recv: failed to receive numbers [" << getCommRank(comm) << " from " << srcs[i] << "]\n";
 			printError(ec);
-			err_exit(comm, 3);
+			err_exit(comm, ERR_COMMUNICATION);
 		}
 	}
 
@@ -147,7 +151,7 @@ void rootRecvNumbers(const std::array<int, INPUT_SIZE>& srcs, std::array<unsigne
 	if(ec){
 		std::cerr << "MPI_Waitall: failed to receive all numbers in root\n";
 		printError(ec);
-		err_exit(comm, 3);
+		err_exit(comm, ERR_COMMUNICATION);
 	}
 }
 
@@ -207,7 +211,7 @@ int main(int argc, char** argv){
 		const int commSize = getCommSize(MPI_COMM_WORLD);
 		if(commSize < REQUIRED_PROCS){
 			std::cerr << "Invalid amount of processors " << commSize << " (required " << REQUIRED_PROCS << ")\n";
-			err_exit(MPI_COMM_WORLD, 1);
+			err_exit(MPI_COMM_WORLD, ERR_ARGUMENTS);
 		}
 
 		const std::string fname = parse_args(argc, argv);
@@ -223,7 +227,7 @@ int main(int argc, char** argv){
 		constexpr std::array<int, INPUT_SIZE> srcs = {10, 16, 16, 17, 17, 18, 18, 13};
 		rootRecvNumbers(srcs, numbers, MPI_COMM_WORLD);
 
-		printNumbers(numbers, true);
+		printNumbers(numbers, OUTPUT_FORMAT);
 	}
 	else{
 		oems(buf, MPI_COMM_WORLD);
