@@ -18,6 +18,13 @@ void err_exit(const MPI_Comm& comm, const int code){
 	MPI_Abort(comm, code);
 }
 
+void printError(const int ec){
+	char estring[MPI_MAX_ERROR_STRING];
+	int len;
+	MPI_Error_string(ec, estring, &len);
+	std::cerr << estring << std::endl;
+}
+
 std::string parse_args(int argc, char** argv){
 	if(argc < 2){
 		std::cerr << "Missing input file argument\n";
@@ -79,47 +86,68 @@ int getCommSize(const MPI_Comm& comm){
 	return commSize;
 }
 
-void printError(const int ec){
-	char estring[MPI_MAX_ERROR_STRING];
-	int len;
-	MPI_Error_string(ec, estring, &len);
-	std::cerr << estring << std::endl;
-}
-
-void sendNumbers(const unsigned char* const buf, const int dest, const MPI_Comm& comm, const int count = 2){
+void sendNumbers(const unsigned char* const buf, const int dest, const MPI_Comm& comm, const int count){
 	int ec = MPI_Send(buf, count, MPI_UNSIGNED_CHAR, dest, MPI_OEMS_TAG, comm);
 	if(ec){
 		std::cerr << "MPI_Send: failed to send numbers [" << getCommRank(comm) << " to " << dest << "]\n";
 		printError(ec);
-		err_exit(MPI_COMM_WORLD, 3);
+		err_exit(comm, 3);
 	}
 }
 
-void recvNumbers(unsigned char* const buf, const int src, const MPI_Comm& comm, const int count = 2){
+void recvNumbers(unsigned char* const buf, const int src, const MPI_Comm& comm, const int count){
 	MPI_Status status;
-	int ec = MPI_Recv(buf, count, MPI_UNSIGNED_CHAR, src, MPI_OEMS_TAG, comm, &status);
+	const int ec = MPI_Recv(buf, count, MPI_UNSIGNED_CHAR, src, MPI_OEMS_TAG, comm, &status);
 	if(ec){
 		std::cerr << "MPI_Recv: failed to receive numbers [" << getCommRank(comm) << " from " << src << "]\n";
 		printError(ec);
-		err_exit(MPI_COMM_WORLD, 3);
+		err_exit(comm, 3);
 	}
 }
 
 void rootSendNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, unsigned char* const buf, const MPI_Comm& comm){
+	constexpr int ROOT_INIT_SEND_COUNT = (INPUT_SIZE / 2) -1;
+	MPI_Request reqs[ROOT_INIT_SEND_COUNT];
+
 	for(unsigned i = 2; i < INPUT_SIZE; i += 2){
 		buf[0] = numbers[i];
 		buf[1] = numbers[i + 1];
-		const int dest = i / 2;
-		sendNumbers(buf, dest, comm);
+		const int dst = i / 2;
+		const int ec = MPI_Isend(buf, 2, MPI_UNSIGNED_CHAR, dst, MPI_OEMS_TAG, comm, &reqs[(i / 2) - 1]);
+		if(ec){
+			std::cerr << "MPI_Isend: failed to send numbers [" << getCommRank(comm) << " to " << dst << "]\n";
+			printError(ec);
+			err_exit(comm, 3);
+		}
 	}
-	usleep(100);
+
+	const int ec = MPI_Waitall(ROOT_INIT_SEND_COUNT, reqs, MPI_STATUSES_IGNORE);
+	if(ec){
+		std::cerr << "MPI_Waitall: failed to send all numbers in root\n";
+		printError(ec);
+		err_exit(comm, 3);
+	}
+
 	buf[0] = numbers[0];
 	buf[1] = numbers[1];
 }
 
 void rootRecvNumbers(const std::array<int, INPUT_SIZE>& srcs, std::array<unsigned char, INPUT_SIZE>& numbers, const MPI_Comm& comm){
+	MPI_Request reqs[INPUT_SIZE];
 	for(unsigned i = 0; i < INPUT_SIZE; i++){
-		recvNumbers(&numbers[i], srcs[i], comm, 1);
+		const int ec = MPI_Irecv(&numbers[i], 1, MPI_UNSIGNED_CHAR, srcs[i], MPI_OEMS_TAG, comm, &reqs[i]);
+		if(ec){
+			std::cerr << "MPI_Recv: failed to receive numbers [" << getCommRank(comm) << " from " << srcs[i] << "]\n";
+			printError(ec);
+			err_exit(comm, 3);
+		}
+	}
+
+	const int ec = MPI_Waitall(INPUT_SIZE, reqs, MPI_STATUSES_IGNORE);
+	if(ec){
+		std::cerr << "MPI_Waitall: failed to receive all numbers in root\n";
+		printError(ec);
+		err_exit(comm, 3);
 	}
 }
 
@@ -133,7 +161,7 @@ void compare(unsigned char* const buf){
 
 void net1x1(const int inH, const int inL, const int outH, const int outL, unsigned char* const buf, const MPI_Comm& comm){
 	if(inH == inL){
-		recvNumbers(buf, inH, comm);
+		recvNumbers(buf, inH, comm, 2);
 	}
 	else{
 		recvNumbers(buf, inH, comm, 1);
@@ -171,6 +199,8 @@ void oems(unsigned char* const buf, const MPI_Comm& comm){
 int main(int argc, char** argv){
 	MPI_Init(&argc, &argv);
 
+	MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
+
 	unsigned char buf[2];
 
 	if(getCommRank(MPI_COMM_WORLD) == 0){
@@ -183,7 +213,7 @@ int main(int argc, char** argv){
 		const std::string fname = parse_args(argc, argv);
 		std::array<unsigned char, INPUT_SIZE> numbers = load_numbers(fname);
 		printNumbers(numbers);
-		
+
 		rootSendNumbers(numbers, buf, MPI_COMM_WORLD);
 
 		compare(buf);
