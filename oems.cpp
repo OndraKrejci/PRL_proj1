@@ -57,10 +57,12 @@ std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 	return numbers;
 }
 
-void printNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers){
+void printNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, const bool format_out = false){
+	const char sep = format_out ? '\n' : ' ';
+
 	std::cout << static_cast<short>(numbers[0]);
 	for(unsigned i = 1; i < INPUT_SIZE; i++){
-		std::cout << ' ' << static_cast<short>(numbers[i]);
+		std::cout << sep << static_cast<short>(numbers[i]);
 	}
 	std::cout << '\n';
 }
@@ -181,6 +183,7 @@ int main(int argc, char** argv){
 		const std::string fname = parse_args(argc, argv);
 		std::array<unsigned char, INPUT_SIZE> numbers = load_numbers(fname);
 		printNumbers(numbers);
+		
 		rootSendNumbers(numbers, buf, MPI_COMM_WORLD);
 
 		compare(buf);
@@ -189,7 +192,8 @@ int main(int argc, char** argv){
 
 		constexpr std::array<int, INPUT_SIZE> srcs = {10, 16, 16, 17, 17, 18, 18, 13};
 		rootRecvNumbers(srcs, numbers, MPI_COMM_WORLD);
-		printNumbers(numbers);
+
+		printNumbers(numbers, true);
 	}
 	else{
 		oems(buf, MPI_COMM_WORLD);
