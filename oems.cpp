@@ -1,5 +1,6 @@
 
 #include <array>
+#include <map>
 #include <fstream> // ifstream
 #include <iostream> // cout, cerr
 
@@ -191,24 +192,29 @@ void net1x1(const int inH, const int inL, const int outH, const int outL, unsign
 void oems(unsigned char* const buf, const MPI_Comm& comm){
 	const int commRank = getCommRank(comm);
 
-	if(commRank == 1) net1x1(0, 0, 4, 5, buf, comm);
-	else if(commRank == 2) net1x1(0, 0, 6, 7, buf, comm);
-	else if(commRank == 3) net1x1(0, 0, 6, 7, buf, comm);
-	else if(commRank == 4) net1x1(0, 1, 10, 8, buf, comm);
-	else if(commRank == 5) net1x1(0, 1, 8, 13, buf, comm);
-	else if(commRank == 6) net1x1(2, 3, 10, 9, buf, comm);
-	else if(commRank == 7) net1x1(2, 3, 9, 13, buf, comm);
-	else if(commRank == 8) net1x1(4, 5, 12, 11, buf, comm);
-	else if(commRank == 9) net1x1(6, 7, 12, 11, buf, comm);
-	else if(commRank == 10) net1x1(4, 6, 0, 14, buf, comm);
-	else if(commRank == 11) net1x1(8, 9, 14, 18, buf, comm);
-	else if(commRank == 12) net1x1(8, 9, 16, 15, buf, comm);
-	else if(commRank == 13) net1x1(5, 7, 15, 0, buf, comm);
-	else if(commRank == 14) net1x1(10, 11, 16, 17, buf, comm);
-	else if(commRank == 15) net1x1(12, 13, 17, 18, buf, comm);
-	else if(commRank == 16) net1x1(14, 12, 0, 0, buf, comm);
-	else if(commRank == 17) net1x1(14, 15, 0, 0, buf, comm);
-	else if(commRank == 18) net1x1(11, 15, 0, 0, buf, comm);
+	const std::map<int, std::array<int, 4>> net{
+		{1, {0, 0, 4, 5}},
+		{2, {0, 0, 6, 7}},
+		{3, {0, 0, 6, 7}},
+		{4, {0, 1, 10, 8}},
+		{5, {0, 1, 8, 13}},
+		{6, {2, 3, 10, 9}},
+		{7, {2, 3, 9, 13}},
+		{8, {4, 5, 12, 11}},
+		{9, {6, 7, 12, 11}},
+		{10, {4, 6, 0, 14}},
+		{11, {8, 9, 14, 18}},
+		{12, {8, 9, 16, 15}},
+		{13, {5, 7, 15, 0}},
+		{14, {10, 11, 16, 17}},
+		{15, {12, 13, 17, 18}},
+		{16, {14, 12, 0, 0}},
+		{17, {14, 15, 0, 0}},
+		{18, {11, 15, 0, 0}}
+	};
+
+	std::array<int, 4> conns = net.at(commRank);
+	net1x1(conns[0], conns[1], conns[2], conns[3], buf, comm);
 }
 
 int main(int argc, char** argv){
@@ -221,7 +227,7 @@ int main(int argc, char** argv){
 	if(getCommRank(MPI_COMM_WORLD) == 0){
 		const int commSize = getCommSize(MPI_COMM_WORLD);
 		if(commSize < REQUIRED_PROCS){
-			std::cerr << "Invalid amount of processors " << commSize << " (required " << REQUIRED_PROCS << ")\n";
+			std::cerr << "Invalid amount of processors " << commSize << " (required: " << REQUIRED_PROCS << ")\n";
 			err_exit(MPI_COMM_WORLD, ERR_ARGUMENTS);
 		}
 
@@ -235,7 +241,7 @@ int main(int argc, char** argv){
 		sendNumbers(buf, 4, MPI_COMM_WORLD, 1);
 		sendNumbers(&buf[1], 5, MPI_COMM_WORLD, 1);
 
-		constexpr std::array<int, ROOT_RECV_PROCS_COUNT> srcs = {10, 16, 17, 18, 13};
+		constexpr std::array<int, ROOT_RECV_PROCS_COUNT> srcs{10, 16, 17, 18, 13};
 		rootRecvNumbers(srcs, numbers, MPI_COMM_WORLD);
 
 		printNumbers(numbers, OUTPUT_FORMAT);
