@@ -7,6 +7,7 @@
 
 constexpr std::size_t INPUT_SIZE = 8;
 constexpr int REQUIRED_PROCS = 19;
+constexpr int ROOT_RECV_PROCS_COUNT = 5;
 
 constexpr int MPI_OEMS_TAG = 1;
 
@@ -136,18 +137,22 @@ void rootSendNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, unsig
 	buf[1] = numbers[1];
 }
 
-void rootRecvNumbers(const std::array<int, INPUT_SIZE>& srcs, std::array<unsigned char, INPUT_SIZE>& numbers, const MPI_Comm& comm){
-	MPI_Request reqs[INPUT_SIZE];
-	for(unsigned i = 0; i < INPUT_SIZE; i++){
-		const int ec = MPI_Irecv(&numbers[i], 1, MPI_UNSIGNED_CHAR, srcs[i], MPI_OEMS_TAG, comm, &reqs[i]);
+void rootRecvNumbers(const std::array<int, ROOT_RECV_PROCS_COUNT>& srcs, std::array<unsigned char, INPUT_SIZE>& numbers, const MPI_Comm& comm){
+	MPI_Request reqs[ROOT_RECV_PROCS_COUNT];
+	int offset = 0;
+	for(unsigned i = 0; i < ROOT_RECV_PROCS_COUNT; i++){
+		const int count = (i == 0 || i == (ROOT_RECV_PROCS_COUNT - 1)) ? 1 : 2;
+		const int ec = MPI_Irecv(&numbers[offset], count, MPI_UNSIGNED_CHAR, srcs[i], MPI_OEMS_TAG, comm, &reqs[i]);
 		if(ec){
 			std::cerr << "MPI_Recv: failed to receive numbers [" << getCommRank(comm) << " from " << srcs[i] << "]\n";
 			printError(ec);
 			err_exit(comm, ERR_COMMUNICATION);
 		}
+
+		offset += count;
 	}
 
-	const int ec = MPI_Waitall(INPUT_SIZE, reqs, MPI_STATUSES_IGNORE);
+	const int ec = MPI_Waitall(ROOT_RECV_PROCS_COUNT, reqs, MPI_STATUSES_IGNORE);
 	if(ec){
 		std::cerr << "MPI_Waitall: failed to receive all numbers in root\n";
 		printError(ec);
@@ -173,8 +178,14 @@ void net1x1(const int inH, const int inL, const int outH, const int outL, unsign
 	}
 
 	compare(buf);
-	sendNumbers(buf, outH, comm, 1);
-	sendNumbers(&buf[1], outL, comm, 1);
+
+	if(outH == outL){
+		sendNumbers(buf, outH, comm, 2);
+	}
+	else{
+		sendNumbers(buf, outH, comm, 1);
+		sendNumbers(&buf[1], outL, comm, 1);
+	}
 }
 
 void oems(unsigned char* const buf, const MPI_Comm& comm){
@@ -224,7 +235,7 @@ int main(int argc, char** argv){
 		sendNumbers(buf, 4, MPI_COMM_WORLD, 1);
 		sendNumbers(&buf[1], 5, MPI_COMM_WORLD, 1);
 
-		constexpr std::array<int, INPUT_SIZE> srcs = {10, 16, 16, 17, 17, 18, 18, 13};
+		constexpr std::array<int, ROOT_RECV_PROCS_COUNT> srcs = {10, 16, 17, 18, 13};
 		rootRecvNumbers(srcs, numbers, MPI_COMM_WORLD);
 
 		printNumbers(numbers, OUTPUT_FORMAT);
