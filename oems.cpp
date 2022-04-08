@@ -31,15 +31,6 @@ void printError(const int ec){
 	std::cerr << estring << std::endl;
 }
 
-std::string parse_args(int argc, char** argv){
-	if(argc < 2){
-		std::cerr << "Missing input file argument\n";
-		err_exit(MPI_COMM_WORLD, ERR_ARGUMENTS);
-	}
-
-	return std::string(argv[1]);
-}
-
 std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 	std::ifstream inp{fname};
 
@@ -162,7 +153,7 @@ void rootRecvNumbers(const std::array<int, ROOT_RECV_PROCS_COUNT>& srcs, std::ar
 }
 
 void compare(unsigned char* const buf){
-	if(buf[0] < buf[1]){
+	if(buf[0] > buf[1]){
 		const unsigned char temp = buf[0];
 		buf[0] = buf[1];
 		buf[1] = temp;
@@ -231,7 +222,7 @@ int main(int argc, char** argv){
 			err_exit(MPI_COMM_WORLD, ERR_ARGUMENTS);
 		}
 
-		const std::string fname = parse_args(argc, argv);
+		const std::string fname = "numbers";
 		std::array<unsigned char, INPUT_SIZE> numbers = load_numbers(fname);
 		printNumbers(numbers);
 
