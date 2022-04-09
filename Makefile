@@ -1,7 +1,7 @@
 
 CXXFLAGS = -std=c++17 -Wextra -Wall -Werror -pedantic -Wunused -Wshadow
 
-.PHONY: run clean
+.PHONY: run clean zip
 
 oems: oems.cpp
 	mpic++ -o oems oems.cpp $(CXXFLAGS)
@@ -13,4 +13,7 @@ run: oems numbers
 	mpirun -np 19 --oversubscribe ./oems numbers
 
 clean:
-	rm -f oems numbers
+	rm -f oems numbers xkrejc69.zip
+
+zip: oems
+	zip xkrejc69.zip oems.cpp test.sh xkrejc69.pdf
