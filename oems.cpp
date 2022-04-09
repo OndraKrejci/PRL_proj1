@@ -20,10 +20,13 @@ enum ERROR_CODE{
 	ERR_COMMUNICATION
 };
 
+
+// Abort the execution after an error has occures
 void err_exit(const MPI_Comm& comm, const ERROR_CODE code){
 	MPI_Abort(comm, code);
 }
 
+// Prints error for the MPI error code
 void printError(const int ec){
 	char estring[MPI_MAX_ERROR_STRING];
 	int len;
@@ -31,6 +34,7 @@ void printError(const int ec){
 	std::cerr << estring << std::endl;
 }
 
+// Loads 8 numbers (size 1 byte) from the input file "numbers"
 std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 	std::ifstream inp{fname};
 
@@ -61,6 +65,7 @@ std::array<unsigned char, INPUT_SIZE> load_numbers(const std::string& fname){
 	return numbers;
 }
 
+// Prints numbers in the initial format or the output format (for the sorted result)
 void printNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, const bool formatOut = false){
 	const char sep = formatOut ? '\n' : ' ';
 
@@ -71,18 +76,21 @@ void printNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, const bo
 	std::cout << '\n';
 }
 
+// Retrieves the rank of the processor
 int getCommRank(const MPI_Comm& comm){
 	int commRank;
 	MPI_Comm_rank(comm, &commRank);
 	return commRank;
 }
 
+// Retrieves the size of a communicator
 int getCommSize(const MPI_Comm& comm){
 	int commSize;
 	MPI_Comm_size(comm, &commSize);
 	return commSize;
 }
 
+// Sends numbers to a processor
 void sendNumbers(const unsigned char* const buf, const int dest, const MPI_Comm& comm, const int count){
 	int ec = MPI_Send(buf, count, MPI_UNSIGNED_CHAR, dest, MPI_OEMS_TAG, comm);
 	if(ec){
@@ -92,6 +100,7 @@ void sendNumbers(const unsigned char* const buf, const int dest, const MPI_Comm&
 	}
 }
 
+// Receives numbers from a processor
 void recvNumbers(unsigned char* const buf, const int src, const MPI_Comm& comm, const int count){
 	MPI_Status status;
 	const int ec = MPI_Recv(buf, count, MPI_UNSIGNED_CHAR, src, MPI_OEMS_TAG, comm, &status);
@@ -102,6 +111,8 @@ void recvNumbers(unsigned char* const buf, const int src, const MPI_Comm& comm, 
 	}
 }
 
+
+// Sends numbers from root to the other processors in the first layer
 void rootSendNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, unsigned char* const buf, const MPI_Comm& comm){
 	constexpr int ROOT_INIT_SEND_COUNT = (INPUT_SIZE / 2) -1;
 	MPI_Request reqs[ROOT_INIT_SEND_COUNT];
@@ -129,6 +140,7 @@ void rootSendNumbers(const std::array<unsigned char, INPUT_SIZE>& numbers, unsig
 	buf[1] = numbers[1];
 }
 
+// Receives output of the whole sorting net
 void rootRecvNumbers(const std::array<int, ROOT_RECV_PROCS_COUNT>& srcs, std::array<unsigned char, INPUT_SIZE>& numbers, const MPI_Comm& comm){
 	MPI_Request reqs[ROOT_RECV_PROCS_COUNT];
 	int offset = 0;
@@ -152,6 +164,7 @@ void rootRecvNumbers(const std::array<int, ROOT_RECV_PROCS_COUNT>& srcs, std::ar
 	}
 }
 
+// Places the numbers in buffer in the order LOW, HIGH
 void compare(unsigned char* const buf){
 	if(buf[0] > buf[1]){
 		const unsigned char temp = buf[0];
@@ -160,6 +173,8 @@ void compare(unsigned char* const buf){
 	}
 }
 
+// 1 x 1 net
+// Receives 2 numbers, compares them and sends the result LOW and HIGH
 void net1x1(const int inH, const int inL, const int outH, const int outL, unsigned char* const buf, const MPI_Comm& comm){
 	if(inH == inL){
 		recvNumbers(buf, inH, comm, 2);
@@ -180,9 +195,13 @@ void net1x1(const int inH, const int inL, const int outH, const int outL, unsign
 	}
 }
 
+// Each processor implements a 1 x 1 net
+// Selects processors to receive from and send to based on its rank
 void oems(unsigned char* const buf, const MPI_Comm& comm){
 	const int commRank = getCommRank(comm);
 
+	// ranks of processors in the whole sorting net
+	// rank: in low, in high, out low, out high
 	const std::map<int, std::array<int, 4>> net{
 		{1, {0, 0, 4, 5}},
 		{2, {0, 0, 6, 7}},
@@ -208,6 +227,7 @@ void oems(unsigned char* const buf, const MPI_Comm& comm){
 	net1x1(conns[0], conns[1], conns[2], conns[3], buf, comm);
 }
 
+// Odd-even merge sort algorithm for 8 numbers
 int main(int argc, char** argv){
 	MPI_Init(&argc, &argv);
 
