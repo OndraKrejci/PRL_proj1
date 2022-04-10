@@ -229,8 +229,10 @@ void oems(unsigned char* const buf, const MPI_Comm& comm){
 		{18, {11, 15, 0, 0}}
 	};
 
-	std::array<int, 4> conns = net.at(commRank);
-	net1x1(conns[0], conns[1], conns[2], conns[3], buf, comm);
+	if(net.find(commRank) != net.end()){
+		std::array<int, 4> conns = net.at(commRank);
+		net1x1(conns[0], conns[1], conns[2], conns[3], buf, comm);
+	}
 }
 
 // Odd-even merge sort algorithm for 8 numbers
