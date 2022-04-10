@@ -1,4 +1,11 @@
 
+/**
+ * PRL - Project 1 - Odd-Even Merge Sort
+ * @file oems.cpp
+ * @author Ondřej Krejčí (xkrejc69)
+ * @date 4/2022
+ */
+
 #include <array>
 #include <map>
 #include <fstream> // ifstream
@@ -19,7 +26,6 @@ enum ERROR_CODE{
 	ERR_ARGUMENTS,
 	ERR_COMMUNICATION
 };
-
 
 // Abort the execution after an error has occures
 void err_exit(const MPI_Comm& comm, const ERROR_CODE code){
